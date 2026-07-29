@@ -74,11 +74,11 @@ public class OrderService {
     }
 
     public List<OrderResponse> findMyOrders(Long userId) {
-        return orderRepository.findByUserIdOrderByCreatedAtDesc(userId)
+        return orderRepository.findByUserIdWithItems(userId)
                 .stream().map(OrderResponse::new).toList();
     }
     public List<OrderResponse> findAll() {
-        return orderRepository.findAll()
+        return orderRepository.findAllWithItems()
                 .stream().map(OrderResponse::new).toList();
     }
 
