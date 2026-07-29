@@ -97,88 +97,78 @@ WHERE u.username = 'test1' AND r.name = 'ROLE_ADMIN';
 
 ## 🗂️ 資料庫 ERD
 
-```
-users ──< user_roles >── roles ──< role_permissions >── permissions
-  │
-  ├──< refresh_tokens
-  │
-  └──< orders ──< order_items >── components
-```
-
-- `users` 與 `roles` 是多對多關係（透過 `user_roles`）
-- `roles` 與 `permissions` 是多對多關係（透過 `role_permissions`）
+- `users` 與 `roles` 是多對多關係(透過 `user_roles`)
+- `roles` 與 `permissions` 是多對多關係(透過 `role_permissions`)
 - 一個 `user` 可以有多筆 `refresh_tokens`、多筆 `orders`
-- 一筆 `order` 可以包含多筆 `order_items`，每筆 `order_item` 對應一個 `component`
+- 一筆 `order` 可以包含多筆 `order_items`,每筆 `order_item` 對應一個 `component`
 
-完整 ERD 圖可用以下 DBML 貼到 [dbdiagram.io](https://dbdiagram.io) 產生：
+```mermaid
+erDiagram
+    USERS ||--o{ USER_ROLES : has
+    ROLES ||--o{ USER_ROLES : has
+    ROLES ||--o{ ROLE_PERMISSIONS : has
+    PERMISSIONS ||--o{ ROLE_PERMISSIONS : has
+    USERS ||--o{ REFRESH_TOKENS : has
+    USERS ||--o{ ORDERS : places
+    ORDERS ||--o{ ORDER_ITEMS : contains
+    COMPONENTS ||--o{ ORDER_ITEMS : "referenced by"
 
-```dbml
-Table users {
-  id bigint [pk, increment]
-  username varchar
-  email varchar
-  password varchar
-  enabled boolean
-  created_at timestamp
-}
+    USERS {
+        bigint id PK
+        varchar username
+        varchar email
+        varchar password
+        boolean enabled
+        timestamp created_at
+    }
 
-Table roles {
-  id bigint [pk, increment]
-  name varchar
-}
+    ROLES {
+        bigint id PK
+        varchar name
+    }
 
-Table permissions {
-  id bigint [pk, increment]
-  name varchar
-}
+    PERMISSIONS {
+        bigint id PK
+        varchar name
+    }
 
-Table user_roles {
-  user_id bigint [ref: > users.id]
-  role_id bigint [ref: > roles.id]
-}
+    REFRESH_TOKENS {
+        bigint id PK
+        bigint user_id FK
+        varchar token
+        timestamp expires_at
+    }
 
-Table role_permissions {
-  role_id bigint [ref: > roles.id]
-  permission_id bigint [ref: > permissions.id]
-}
+    COMPONENTS {
+        bigint id PK
+        varchar name
+        varchar category
+        varchar brand
+        decimal price
+        int stock
+        varchar socket
+        int power_watt
+        timestamp created_at
+    }
 
-Table refresh_tokens {
-  id bigint [pk, increment]
-  user_id bigint [ref: > users.id]
-  token varchar
-  expires_at timestamp
-}
+    ORDERS {
+        bigint id PK
+        bigint user_id FK
+        varchar status
+        decimal total_amount
+        timestamp created_at
+    }
 
-Table components {
-  id bigint [pk, increment]
-  name varchar
-  category varchar [note: 'CPU / MOTHERBOARD / GPU / RAM / PSU / CASE']
-  brand varchar
-  price decimal
-  stock int
-  socket varchar [note: 'CPU / 主機板才有值']
-  power_watt int [note: 'GPU建議瓦數 / PSU供應瓦數']
-  created_at timestamp
-}
-
-Table orders {
-  id bigint [pk, increment]
-  user_id bigint [ref: > users.id]
-  status varchar [note: 'PENDING / SHIPPED / COMPLETED']
-  total_amount decimal
-  created_at timestamp
-}
-
-Table order_items {
-  id bigint [pk, increment]
-  order_id bigint [ref: > orders.id]
-  component_id bigint [ref: > components.id]
-  quantity int
-  unit_price decimal
-}
+    ORDER_ITEMS {
+        bigint id PK
+        bigint order_id FK
+        bigint component_id FK
+        int quantity
+        decimal unit_price
+    }
 ```
 
----
+> GitHub 網頁會自動把上面的 Mermaid 語法渲染成圖表,不需要額外匯出圖片。也可以先貼到 [mermaid.live](https://mermaid.live) 預覽。
 
 ## ⚠️ 已知限制 / 未實作項目
 
