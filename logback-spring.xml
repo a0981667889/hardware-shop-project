@@ -1,0 +1,40 @@
+<!-- src/main/resources/logback-spring.xml -->
+<configuration>
+
+    <!-- 開發環境：輸出到 Console，顏色標示 -->
+    <springProfile name="dev">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>
+                    %clr(%d{HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID:- }){magenta}
+                    %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan}
+                    %clr(:){faint} %m%n%wEx
+                </pattern>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+        <!-- 自己的程式碼可以開 DEBUG -->
+        <logger name="com.vcb.vtuber_card_battle" level="DEBUG"/>
+    </springProfile>
+
+    <!-- 正式環境：輸出到檔案，JSON 格式方便 ELK 收集 -->
+    <springProfile name="prod">
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>logs/app.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>logs/app.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+                <maxHistory>30</maxHistory>         <!-- 保留 30 天 -->
+                <totalSizeCap>3GB</totalSizeCap>    <!-- 總大小上限 -->
+            </rollingPolicy>
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
+        <root level="WARN">
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
+
+</configuration>
