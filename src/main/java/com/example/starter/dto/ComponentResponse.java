@@ -17,6 +17,7 @@ public class ComponentResponse {
     private final String socket;
     private final Integer powerWatt;
     private final LocalDateTime createdAt;
+    private final String memoryType;
 
     public ComponentResponse(Component c) {
         this.id = c.getId();
@@ -26,6 +27,7 @@ public class ComponentResponse {
         this.price = c.getPrice();
         this.stock = c.getStock();
         this.socket = c.getSocket();
+        this.memoryType = c.getMemoryType();
         this.powerWatt = c.getPowerWatt();
         this.createdAt = c.getCreatedAt();
     }
