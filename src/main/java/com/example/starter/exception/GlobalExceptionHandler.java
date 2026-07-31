@@ -151,18 +151,7 @@ public class GlobalExceptionHandler {
                 buildResponse(409, "INSUFFICIENT_STOCK", ex.getMessage(), request));
     }
 
-    // ─── 4.8 相容性檢查失敗 → 400 ─────────────────────────────────
-    @ExceptionHandler(CompatibilityException.class)
-    public ResponseEntity<ApiErrorResponse> handleCompatibility(
-            CompatibilityException ex, HttpServletRequest request) {
-
-        log.warn("相容性檢查失敗 [{}] {}: {}", request.getMethod(),
-                request.getRequestURI(), ex.getMessage());
-
-        return ResponseEntity.badRequest().body(
-                buildResponse(400, "COMPATIBILITY_ERROR", ex.getMessage(), request));
-    }
-    // ─── 4.9 訂單找不到 → 404 ─────────────────────────────────────
+    // ─── 4.8 訂單找不到 → 404 ─────────────────────────────────────
     @ExceptionHandler(OrderNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleOrderNotFound(
             OrderNotFoundException ex, HttpServletRequest request) {

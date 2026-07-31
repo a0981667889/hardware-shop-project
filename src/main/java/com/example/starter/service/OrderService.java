@@ -5,7 +5,6 @@ import com.example.starter.dto.OrderResponse;
 import com.example.starter.entity.Component;
 import com.example.starter.entity.Order;
 import com.example.starter.entity.OrderItem;
-import com.example.starter.exception.CompatibilityException;
 import com.example.starter.exception.ComponentNotFoundException;
 import com.example.starter.exception.InsufficientStockException;
 import com.example.starter.exception.OrderNotFoundException;
