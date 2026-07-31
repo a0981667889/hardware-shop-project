@@ -8,12 +8,12 @@ import com.example.starter.entity.OrderItem;
 import com.example.starter.exception.CompatibilityException;
 import com.example.starter.exception.ComponentNotFoundException;
 import com.example.starter.exception.InsufficientStockException;
+import com.example.starter.exception.OrderNotFoundException;
 import com.example.starter.repository.ComponentRepository;
 import com.example.starter.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.example.starter.exception.OrderNotFoundException;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -30,7 +30,6 @@ public class OrderService {
     @Transactional
     public OrderResponse createOrder(Long userId, OrderRequest request) {
 
-        // 1. 撈出這次下單牽涉到的所有 Component，並檢查庫存
         Map<Long, Component> componentMap = new HashMap<>();
         for (OrderRequest.OrderItemRequest itemReq : request.getItems()) {
             Component component = componentRepository.findById(itemReq.getComponentId())
@@ -43,10 +42,8 @@ public class OrderService {
             componentMap.put(component.getId(), component);
         }
 
-        // 2. 相容性檢查：CPU 的 socket 必須跟主機板的 socket 相同
         checkCpuMotherboardCompatibility(componentMap.values());
 
-        // 3. 建立訂單、計算總價、扣庫存（全部在同一個 transaction）
         Order order = new Order();
         order.setUserId(userId);
 
@@ -62,7 +59,6 @@ public class OrderService {
 
             total = total.add(component.getPrice().multiply(BigDecimal.valueOf(itemReq.getQuantity())));
 
-            // 扣庫存
             component.setStock(component.getStock() - itemReq.getQuantity());
             componentRepository.save(component);
         }
@@ -70,16 +66,21 @@ public class OrderService {
         order.setTotalAmount(total);
         Order saved = orderRepository.save(order);
 
-        return new OrderResponse(saved);
+        // 下單當下手上已經有零件資料,直接組 name map,不用再查一次資料庫
+        Map<Long, String> nameMap = new HashMap<>();
+        componentMap.forEach((id, component) -> nameMap.put(id, component.getName()));
+
+        return new OrderResponse(saved, nameMap);
     }
 
     public List<OrderResponse> findMyOrders(Long userId) {
-        return orderRepository.findByUserIdWithItems(userId)
-                .stream().map(OrderResponse::new).toList();
+        List<Order> orders = orderRepository.findByUserIdWithItems(userId);
+        return buildResponsesWithNames(orders);
     }
+
     public List<OrderResponse> findAll() {
-        return orderRepository.findAllWithItems()
-                .stream().map(OrderResponse::new).toList();
+        List<Order> orders = orderRepository.findAllWithItems();
+        return buildResponsesWithNames(orders);
     }
 
     @Transactional
@@ -87,14 +88,35 @@ public class OrderService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
         order.setStatus(newStatus);
-        return new OrderResponse(orderRepository.save(order));
+        Order saved = orderRepository.save(order);
+
+        Map<Long, String> nameMap = buildNameMap(List.of(saved));
+        return new OrderResponse(saved, nameMap);
     }
 
     /**
-     * 相容性檢查核心邏輯：
-     * 如果這張訂單同時包含 CPU 跟主機板，兩者的 socket 必須相同，否則擋下整張訂單。
-     * 只實作這一條規則，足夠展示邏輯判斷能力，不做成通用規則引擎。
+     * 把一批訂單轉成 OrderResponse,並且只查一次資料庫拿到所有零件名稱(避免 N+1)
      */
+    private List<OrderResponse> buildResponsesWithNames(List<Order> orders) {
+        Map<Long, String> nameMap = buildNameMap(orders);
+        return orders.stream()
+                .map(order -> new OrderResponse(order, nameMap))
+                .toList();
+    }
+
+    private Map<Long, String> buildNameMap(List<Order> orders) {
+        List<Long> componentIds = orders.stream()
+                .flatMap(order -> order.getItems().stream())
+                .map(OrderItem::getComponentId)
+                .distinct()
+                .toList();
+
+        Map<Long, String> nameMap = new HashMap<>();
+        componentRepository.findAllById(componentIds)
+                .forEach(component -> nameMap.put(component.getId(), component.getName()));
+        return nameMap;
+    }
+
     private void checkCpuMotherboardCompatibility(java.util.Collection<Component> components) {
         Component cpu = components.stream()
                 .filter(c -> "CPU".equalsIgnoreCase(c.getCategory()))
