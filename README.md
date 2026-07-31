@@ -10,10 +10,11 @@
 
 - **會員系統**：JWT 註冊 / 登入 / refresh token 輪換 / 登出
 - **零件管理**：CPU、主機板、GPU、PSU 等零件的 CRUD，可依分類查詢
+- **購物車系統**：加入 / 查詢 / 更新數量 / 移除單一項目 / 清空購物車，重複加入同一零件會自動疊加數量，不會產生重複紀錄
 - **下單系統**：下單時檢查庫存、計算總金額，整個流程包在 `@Transactional` 內，確保資料一致性
-- **相容性檢查（本專題技術亮點）**：下單時自動比對 CPU 與主機板的 socket 是否相符，不相容的組合會被攔截並回傳明確錯誤訊息，不會建立無效訂單
+- **相容性檢查（本專題技術亮點）**：獨立成 `CompatibilityService`，自動比對 CPU 與主機板的 socket 是否相符。偵測到不相容時**不會直接擋單**，而是回傳 `409` 搭配明確的警告訊息；使用者可在請求裡加上 `confirmIncompatible: true` 表示已知悉風險並堅持購買，此時才會建立訂單。這個設計比單純擋單更貼近真實電商的使用者體驗（保留使用者的最終決定權）
 - **權限分級**：一般使用者（USER）與管理者（ADMIN）分開的 API 權限——管理者可查看所有訂單、更新訂單狀態，一般使用者只能查看自己的訂單
-- **統一錯誤格式**：所有例外（驗證失敗、找不到資源、庫存不足、相容性錯誤等）都經過 `@RestControllerAdvice` 統一處理，回傳一致的 JSON 格式，不會有裸露的 500 stack trace
+- **統一錯誤格式**：所有例外（驗證失敗、找不到資源、庫存不足等）都經過 `@RestControllerAdvice` 統一處理，回傳一致的 JSON 格式，不會有裸露的 500 stack trace
 
 ---
 
@@ -40,6 +41,7 @@ docker exec my_postgres psql -U postgres -c "CREATE DATABASE starter_db;"
 - `V1__auth_schema.sql`：會員、角色、權限、refresh token 相關表
 - `V2__create_components.sql`：零件表
 - `V3__create_orders.sql`：訂單、訂單明細表
+- `V4__create_cart_items.sql`：購物車表
 
 ### 3. 開啟 Swagger UI 測試 API
 
@@ -66,7 +68,12 @@ http://localhost:8080/swagger-ui/index.html
 | POST | `/api/components` | 新增零件 | 需登入 |
 | PUT | `/api/components/{id}` | 更新零件 | 需登入 |
 | DELETE | `/api/components/{id}` | 刪除零件 | 需登入 |
-| POST | `/api/orders` | 下單（含相容性檢查、庫存扣減） | 需登入 |
+| GET | `/api/cart` | 查詢購物車 | 需登入 |
+| POST | `/api/cart/items` | 加入購物車（同零件會疊加數量） | 需登入 |
+| PUT | `/api/cart/items/{componentId}` | 更新購物車項目數量 | 需登入 |
+| DELETE | `/api/cart/items/{componentId}` | 移除購物車單一項目 | 需登入 |
+| DELETE | `/api/cart` | 清空購物車 | 需登入 |
+| POST | `/api/orders` | 下單（含相容性檢查、庫存扣減）；相容性有問題且未帶 `confirmIncompatible: true` 時回傳 `409` 警告 | 需登入 |
 | GET | `/api/orders/mine` | 查詢自己的訂單 | 需登入 |
 | GET | `/api/admin/orders` | 查詢所有訂單 | ADMIN |
 | PATCH | `/api/admin/orders/{id}/status` | 更新訂單狀態 | ADMIN |
@@ -99,8 +106,9 @@ WHERE u.username = 'test1' AND r.name = 'ROLE_ADMIN';
 
 - `users` 與 `roles` 是多對多關係(透過 `user_roles`)
 - `roles` 與 `permissions` 是多對多關係(透過 `role_permissions`)
-- 一個 `user` 可以有多筆 `refresh_tokens`、多筆 `orders`
+- 一個 `user` 可以有多筆 `refresh_tokens`、多筆 `orders`、多筆 `cart_items`
 - 一筆 `order` 可以包含多筆 `order_items`,每筆 `order_item` 對應一個 `component`
+- `cart_items` 對每個使用者的每個零件只會有一筆紀錄(`user_id` + `component_id` 唯一),重複加入同一零件是累加 `quantity`,不是新增資料列
 
 ```mermaid
 erDiagram
@@ -110,8 +118,10 @@ erDiagram
     PERMISSIONS ||--o{ ROLE_PERMISSIONS : has
     USERS ||--o{ REFRESH_TOKENS : has
     USERS ||--o{ ORDERS : places
+    USERS ||--o{ CART_ITEMS : has
     ORDERS ||--o{ ORDER_ITEMS : contains
     COMPONENTS ||--o{ ORDER_ITEMS : "referenced by"
+    COMPONENTS ||--o{ CART_ITEMS : "referenced by"
 
     USERS {
         bigint id PK
@@ -166,6 +176,14 @@ erDiagram
         int quantity
         decimal unit_price
     }
+
+    CART_ITEMS {
+        bigint id PK
+        bigint user_id FK
+        bigint component_id FK
+        int quantity
+        timestamp created_at
+    }
 ```
 
 > GitHub 網頁會自動把上面的 Mermaid 語法渲染成圖表,不需要額外匯出圖片。也可以先貼到 [mermaid.live](https://mermaid.live) 預覽。
@@ -173,7 +191,8 @@ erDiagram
 ## ⚠️ 已知限制 / 未實作項目
 
 - **Redis 快取、Docker Compose 一鍵部署**：受限於開發時間，本次未實作，是後續可優化方向
-- **相容性檢查**目前只涵蓋「CPU 與主機板 socket 是否相符」這一條規則，可擴充方向：RAM 是否對應主機板記憶體類型、PSU 瓦數是否足夠支撐整套零件
+- **相容性檢查**目前只涵蓋「CPU 與主機板 socket 是否相符」這一條規則，可擴充方向：RAM 是否對應主機板記憶體類型、PSU 瓦數是否足夠支撐整套零件。目前的架構（`CompatibilityService` 回傳警告清單）已經是可擴充設計，新增規則只需要在 `check()` 方法裡多加一段判斷、疊加進 `warnings` 清單即可
+- **購物車不會檢查相容性**：相容性檢查目前只發生在「送出訂單」的當下，購物車階段可以自由加入任何零件組合，這是刻意的設計（先讓使用者自由挑選，結帳時才提醒），但如果要在購物車階段就即時提示，也可以呼叫 `CompatibilityService` 做到
 
 ---
 
@@ -188,6 +207,7 @@ erDiagram
 | 5 | Enum 欄位沒 `@Enumerated(EnumType.STRING)` | schema 驗證型別不符 | 加註解，DB 用 VARCHAR |
 | 6 | 忘了在 SecurityConfig 放行公開 API | 前端一直 401/403 | 檢查 API 清單跟 SecurityConfig 規則是否一一對應 |
 | 7 | Spring Security 過濾器層擋下的 403（例如 `hasRole` 不符）| 回應 body 是空的，不是自訂 JSON 格式 | 這類 403 發生在 filter chain，不會進到 `@RestControllerAdvice`；如需統一格式要另外設定 `AccessDeniedHandler` |
+| 8 | 相容性檢查一開始用例外（`throw`）實作，直接擋單 | 使用者沒有機會「知情後仍要購買」，體驗生硬 | 把邏輯抽成獨立的 `CompatibilityService`，改成回傳 `List<CompatibilityWarning>`；Controller 依 `confirmIncompatible` 欄位決定要不要放行，例外處理跟業務邏輯分離 |
 
 ---
 
