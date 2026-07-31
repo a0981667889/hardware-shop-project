@@ -125,13 +125,6 @@ public class OrderService {
                 .filter(c -> "MOTHERBOARD".equalsIgnoreCase(c.getCategory()))
                 .findFirst().orElse(null);
 
-        if (cpu != null && motherboard != null) {
-            if (cpu.getSocket() == null || motherboard.getSocket() == null
-                    || !cpu.getSocket().equalsIgnoreCase(motherboard.getSocket())) {
-                throw new CompatibilityException(String.format(
-                        "相容性錯誤：CPU「%s」(socket %s) 與主機板「%s」(socket %s) 插槽不相容",
-                        cpu.getName(), cpu.getSocket(), motherboard.getName(), motherboard.getSocket()));
-            }
-        }
+
     }
 }
