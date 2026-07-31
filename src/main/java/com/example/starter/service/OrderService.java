@@ -39,15 +39,12 @@ public class OrderService {
             componentMap.put(component.getId(), component);
         }
 
-        // 相容性檢查:改成回傳警告,不直接擋單
         List<CompatibilityWarning> warnings = compatibilityService.check(componentMap.values());
 
         if (!warnings.isEmpty() && !request.isConfirmIncompatible()) {
-            // 有警告且使用者還沒確認過 → 不建立訂單,回傳警告讓前端跳提示
             return OrderCreationResult.needsConfirmation(warnings);
         }
 
-        // 沒有警告,或使用者已確認要強制購買 → 正常建單
         Order order = new Order();
         order.setUserId(userId);
 
@@ -70,20 +67,18 @@ public class OrderService {
         order.setTotalAmount(total);
         Order saved = orderRepository.save(order);
 
-        Map<Long, String> nameMap = new HashMap<>();
-        componentMap.forEach((id, component) -> nameMap.put(id, component.getName()));
-
-        return OrderCreationResult.success(new OrderResponse(saved, nameMap));
+        // 直接複用剛剛查好的 componentMap,不用再查一次資料庫
+        return OrderCreationResult.success(new OrderResponse(saved, componentMap));
     }
 
     public List<OrderResponse> findMyOrders(Long userId) {
         List<Order> orders = orderRepository.findByUserIdWithItems(userId);
-        return buildResponsesWithNames(orders);
+        return buildResponsesWithComponents(orders);
     }
 
     public List<OrderResponse> findAll() {
         List<Order> orders = orderRepository.findAllWithItems();
-        return buildResponsesWithNames(orders);
+        return buildResponsesWithComponents(orders);
     }
 
     @Transactional
@@ -93,27 +88,26 @@ public class OrderService {
         order.setStatus(newStatus);
         Order saved = orderRepository.save(order);
 
-        Map<Long, String> nameMap = buildNameMap(List.of(saved));
-        return new OrderResponse(saved, nameMap);
+        Map<Long, Component> componentMap = buildComponentMap(List.of(saved));
+        return new OrderResponse(saved, componentMap);
     }
 
-    private List<OrderResponse> buildResponsesWithNames(List<Order> orders) {
-        Map<Long, String> nameMap = buildNameMap(orders);
+    private List<OrderResponse> buildResponsesWithComponents(List<Order> orders) {
+        Map<Long, Component> componentMap = buildComponentMap(orders);
         return orders.stream()
-                .map(order -> new OrderResponse(order, nameMap))
+                .map(order -> new OrderResponse(order, componentMap))
                 .toList();
     }
 
-    private Map<Long, String> buildNameMap(List<Order> orders) {
+    private Map<Long, Component> buildComponentMap(List<Order> orders) {
         List<Long> componentIds = orders.stream()
                 .flatMap(order -> order.getItems().stream())
                 .map(OrderItem::getComponentId)
                 .distinct()
                 .toList();
 
-        Map<Long, String> nameMap = new HashMap<>();
-        componentRepository.findAllById(componentIds)
-                .forEach(component -> nameMap.put(component.getId(), component.getName()));
-        return nameMap;
+        return componentRepository.findAllById(componentIds)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(Component::getId, c -> c));
     }
 }

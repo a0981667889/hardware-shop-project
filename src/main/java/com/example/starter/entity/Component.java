@@ -42,6 +42,9 @@ public class Component {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @Column(name = "memory_type")
+    private String memoryType;   // RAM 本身類型 / 主機板支援的記憶體類型,例如 DDR4、DDR5
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();

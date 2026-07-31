@@ -20,6 +20,8 @@ public class ComponentRequest {
 
     private String brand;
 
+    private String memoryType;
+
     @NotNull
     @DecimalMin(value = "0.0", inclusive = true)
     private BigDecimal price;

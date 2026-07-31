@@ -63,5 +63,6 @@ public class ComponentService {
         c.setStock(req.getStock());
         c.setSocket(req.getSocket());
         c.setPowerWatt(req.getPowerWatt());
+        c.setMemoryType(req.getMemoryType());
     }
 }

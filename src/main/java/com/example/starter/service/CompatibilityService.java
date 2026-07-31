@@ -26,6 +26,9 @@ public class CompatibilityService {
         Component motherboard = components.stream()
                 .filter(c -> "MOTHERBOARD".equalsIgnoreCase(c.getCategory()))
                 .findFirst().orElse(null);
+        Component ram = components.stream()
+                .filter(c -> "RAM".equalsIgnoreCase(c.getCategory()))
+                .findFirst().orElse(null);
 
         if (cpu != null && motherboard != null) {
             boolean socketMismatch = cpu.getSocket() == null
@@ -40,6 +43,20 @@ public class CompatibilityService {
                 ));
             }
         }
+        if (ram != null && motherboard != null) {
+            boolean memoryTypeMismatch = ram.getMemoryType() == null
+                    || motherboard.getMemoryType() == null
+                    || !ram.getMemoryType().equalsIgnoreCase(motherboard.getMemoryType());
+
+            if (memoryTypeMismatch) {
+                warnings.add(new CompatibilityWarning(
+                        String.format("記憶體「%s」(%s) 與主機板「%s」(支援 %s) 記憶體類型不相容,可能無法安裝",
+                                ram.getName(), ram.getMemoryType(), motherboard.getName(), motherboard.getMemoryType()),
+                        List.of(ram.getId(), motherboard.getId())
+                ));
+            }
+        }
+
 
         return warnings;
     }

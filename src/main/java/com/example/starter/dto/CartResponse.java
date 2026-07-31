@@ -12,6 +12,7 @@ public class CartResponse {
     private final List<Item> items;
     private final BigDecimal totalAmount;
 
+
     public CartResponse(List<Item> items) {
         this.items = items;
         this.totalAmount = items.stream()
@@ -26,6 +27,7 @@ public class CartResponse {
         private final BigDecimal unitPrice;
         private final Integer quantity;
         private final BigDecimal subtotal;
+        private final String memoryType;
 
         public Item(CartItem cartItem, Component component) {
             this.componentId = component.getId();
@@ -33,6 +35,7 @@ public class CartResponse {
             this.unitPrice = component.getPrice();
             this.quantity = cartItem.getQuantity();
             this.subtotal = component.getPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity()));
+            this.memoryType = component.getMemoryType();
         }
     }
 }
