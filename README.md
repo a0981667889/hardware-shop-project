@@ -186,7 +186,6 @@ erDiagram
     }
 ```
 
-> GitHub 網頁會自動把上面的 Mermaid 語法渲染成圖表,不需要額外匯出圖片。也可以先貼到 [mermaid.live](https://mermaid.live) 預覽。
 
 ## ⚠️ 已知限制 / 未實作項目
 
