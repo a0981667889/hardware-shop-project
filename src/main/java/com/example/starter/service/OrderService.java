@@ -1,7 +1,6 @@
 package com.example.starter.service;
 
-import com.example.starter.dto.OrderRequest;
-import com.example.starter.dto.OrderResponse;
+import com.example.starter.dto.*;
 import com.example.starter.entity.Component;
 import com.example.starter.entity.Order;
 import com.example.starter.entity.OrderItem;
@@ -15,9 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -25,9 +22,10 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final ComponentRepository componentRepository;
+    private final CompatibilityService compatibilityService;
 
     @Transactional
-    public OrderResponse createOrder(Long userId, OrderRequest request) {
+    public OrderCreationResult createOrder(Long userId, OrderRequest request) {
 
         Map<Long, Component> componentMap = new HashMap<>();
         for (OrderRequest.OrderItemRequest itemReq : request.getItems()) {
@@ -41,8 +39,15 @@ public class OrderService {
             componentMap.put(component.getId(), component);
         }
 
-        checkCpuMotherboardCompatibility(componentMap.values());
+        // 相容性檢查:改成回傳警告,不直接擋單
+        List<CompatibilityWarning> warnings = compatibilityService.check(componentMap.values());
 
+        if (!warnings.isEmpty() && !request.isConfirmIncompatible()) {
+            // 有警告且使用者還沒確認過 → 不建立訂單,回傳警告讓前端跳提示
+            return OrderCreationResult.needsConfirmation(warnings);
+        }
+
+        // 沒有警告,或使用者已確認要強制購買 → 正常建單
         Order order = new Order();
         order.setUserId(userId);
 
@@ -65,11 +70,10 @@ public class OrderService {
         order.setTotalAmount(total);
         Order saved = orderRepository.save(order);
 
-        // 下單當下手上已經有零件資料,直接組 name map,不用再查一次資料庫
         Map<Long, String> nameMap = new HashMap<>();
         componentMap.forEach((id, component) -> nameMap.put(id, component.getName()));
 
-        return new OrderResponse(saved, nameMap);
+        return OrderCreationResult.success(new OrderResponse(saved, nameMap));
     }
 
     public List<OrderResponse> findMyOrders(Long userId) {
@@ -93,9 +97,6 @@ public class OrderService {
         return new OrderResponse(saved, nameMap);
     }
 
-    /**
-     * 把一批訂單轉成 OrderResponse,並且只查一次資料庫拿到所有零件名稱(避免 N+1)
-     */
     private List<OrderResponse> buildResponsesWithNames(List<Order> orders) {
         Map<Long, String> nameMap = buildNameMap(orders);
         return orders.stream()
@@ -114,17 +115,5 @@ public class OrderService {
         componentRepository.findAllById(componentIds)
                 .forEach(component -> nameMap.put(component.getId(), component.getName()));
         return nameMap;
-    }
-
-    private void checkCpuMotherboardCompatibility(java.util.Collection<Component> components) {
-        Component cpu = components.stream()
-                .filter(c -> "CPU".equalsIgnoreCase(c.getCategory()))
-                .findFirst().orElse(null);
-
-        Component motherboard = components.stream()
-                .filter(c -> "MOTHERBOARD".equalsIgnoreCase(c.getCategory()))
-                .findFirst().orElse(null);
-
-
     }
 }

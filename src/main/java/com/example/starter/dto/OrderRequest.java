@@ -16,6 +16,9 @@ public class OrderRequest {
     @Valid
     private List<OrderItemRequest> items;
 
+    /** 如果相容性檢查有警告,使用者確認要強制購買時設為 true */
+    private boolean confirmIncompatible = false;
+
     @Getter @Setter
     public static class OrderItemRequest {
         @NotNull

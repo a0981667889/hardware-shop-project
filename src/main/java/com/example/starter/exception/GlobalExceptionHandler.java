@@ -163,6 +163,15 @@ public class GlobalExceptionHandler {
                 buildResponse(404, "ORDER_NOT_FOUND", ex.getMessage(), request));
     }
 
+    @ExceptionHandler(CartItemNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleCartItemNotFound(
+            CartItemNotFoundException ex, HttpServletRequest request) {
+        log.warn("購物車項目找不到 [{}] {}: {}", request.getMethod(),
+                request.getRequestURI(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                buildResponse(404, "CART_ITEM_NOT_FOUND", ex.getMessage(), request));
+    }
+
     // ─── 6. 未認證（沒登入）→ 401 ────────────────────────────────────
     //     ⚠️ 注意：這個 handler 只攔得到「Controller 程式碼裡丟出」的 AuthenticationException。
     //     Spring Security 過濾器層的 401/403 到不了 @ControllerAdvice——要用坑2 的
