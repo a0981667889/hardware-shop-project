@@ -12,7 +12,7 @@
 - **零件管理**：CPU、主機板、GPU、PSU 等零件的 CRUD，可依分類查詢
 - **購物車系統**：加入 / 查詢 / 更新數量 / 移除單一項目 / 清空購物車，重複加入同一零件會自動疊加數量，不會產生重複紀錄
 - **下單系統**：下單時檢查庫存、計算總金額，整個流程包在 `@Transactional` 內，確保資料一致性
-- **相容性檢查（本專題技術亮點）**：獨立成 `CompatibilityService`，自動比對 CPU 與主機板的 socket 是否相符。偵測到不相容時**不會直接擋單**，而是回傳 `409` 搭配明確的警告訊息；使用者可在請求裡加上 `confirmIncompatible: true` 表示已知悉風險並堅持購買，此時才會建立訂單。這個設計比單純擋單更貼近真實電商的使用者體驗（保留使用者的最終決定權）
+- **相容性檢查（本專題技術亮點）**：獨立成 `CompatibilityService`，目前涵蓋兩條規則——① CPU 與主機板的 socket 是否相符 ② RAM 與主機板的記憶體類型（DDR4/DDR5）是否相符。偵測到不相容時**不會直接擋單**，而是回傳 `409` 搭配明確的警告訊息；使用者可在請求裡加上 `confirmIncompatible: true` 表示已知悉風險並堅持購買，此時才會建立訂單。這個設計比單純擋單更貼近真實電商的使用者體驗（保留使用者的最終決定權），規則之間互相獨立，新增規則只需要在 `check()` 方法裡多加一段判斷
 - **權限分級**：一般使用者（USER）與管理者（ADMIN）分開的 API 權限——管理者可查看所有訂單、更新訂單狀態，一般使用者只能查看自己的訂單
 - **統一錯誤格式**：所有例外（驗證失敗、找不到資源、庫存不足等）都經過 `@RestControllerAdvice` 統一處理，回傳一致的 JSON 格式，不會有裸露的 500 stack trace
 
@@ -42,6 +42,7 @@ docker exec my_postgres psql -U postgres -c "CREATE DATABASE starter_db;"
 - `V2__create_components.sql`：零件表
 - `V3__create_orders.sql`：訂單、訂單明細表
 - `V4__create_cart_items.sql`：購物車表
+- `V5__add_memory_type.sql`：零件表補上 `memory_type` 欄位(記憶體相容性檢查用)
 
 ### 3. 開啟 Swagger UI 測試 API
 
@@ -73,7 +74,7 @@ http://localhost:8080/swagger-ui/index.html
 | PUT | `/api/cart/items/{componentId}` | 更新購物車項目數量 | 需登入 |
 | DELETE | `/api/cart/items/{componentId}` | 移除購物車單一項目 | 需登入 |
 | DELETE | `/api/cart` | 清空購物車 | 需登入 |
-| POST | `/api/orders` | 下單（含相容性檢查、庫存扣減）；相容性有問題且未帶 `confirmIncompatible: true` 時回傳 `409` 警告 | 需登入 |
+| POST | `/api/orders` | 下單(含相容性檢查、庫存扣減)；相容性有問題且未帶 `confirmIncompatible: true` 時回傳 `409` 警告。成功建單的回應每個項目都包含完整零件資訊(`category`/`socket`/`memoryType`/`powerWatt`),值為 null 的欄位不會出現在回應裡 | 需登入 |
 | GET | `/api/orders/mine` | 查詢自己的訂單 | 需登入 |
 | GET | `/api/admin/orders` | 查詢所有訂單 | ADMIN |
 | PATCH | `/api/admin/orders/{id}/status` | 更新訂單狀態 | ADMIN |
@@ -157,6 +158,7 @@ erDiagram
         decimal price
         int stock
         varchar socket
+        varchar memory_type
         int power_watt
         timestamp created_at
     }
@@ -186,11 +188,10 @@ erDiagram
     }
 ```
 
-
 ## ⚠️ 已知限制 / 未實作項目
 
 - **Redis 快取、Docker Compose 一鍵部署**：受限於開發時間，本次未實作，是後續可優化方向
-- **相容性檢查**目前只涵蓋「CPU 與主機板 socket 是否相符」這一條規則，可擴充方向：RAM 是否對應主機板記憶體類型、PSU 瓦數是否足夠支撐整套零件。目前的架構（`CompatibilityService` 回傳警告清單）已經是可擴充設計，新增規則只需要在 `check()` 方法裡多加一段判斷、疊加進 `warnings` 清單即可
+- **相容性檢查**目前涵蓋 CPU/主機板 socket、RAM/主機板記憶體類型兩條規則，可繼續擴充方向：PSU 瓦數是否足夠支撐整套零件、機殼是否支援主機板尺寸。`CompatibilityService` 回傳警告清單的架構已經是可擴充設計，新增規則只需要在 `check()` 方法裡多加一段判斷、疊加進 `warnings` 清單即可
 - **購物車不會檢查相容性**：相容性檢查目前只發生在「送出訂單」的當下，購物車階段可以自由加入任何零件組合，這是刻意的設計（先讓使用者自由挑選，結帳時才提醒），但如果要在購物車階段就即時提示，也可以呼叫 `CompatibilityService` 做到
 
 ---
@@ -207,6 +208,7 @@ erDiagram
 | 6 | 忘了在 SecurityConfig 放行公開 API | 前端一直 401/403 | 檢查 API 清單跟 SecurityConfig 規則是否一一對應 |
 | 7 | Spring Security 過濾器層擋下的 403（例如 `hasRole` 不符）| 回應 body 是空的，不是自訂 JSON 格式 | 這類 403 發生在 filter chain，不會進到 `@RestControllerAdvice`；如需統一格式要另外設定 `AccessDeniedHandler` |
 | 8 | 相容性檢查一開始用例外（`throw`）實作，直接擋單 | 使用者沒有機會「知情後仍要購買」，體驗生硬 | 把邏輯抽成獨立的 `CompatibilityService`，改成回傳 `List<CompatibilityWarning>`；Controller 依 `confirmIncompatible` 欄位決定要不要放行，例外處理跟業務邏輯分離 |
+| 9 | 訂單回應把零件完整資訊（`socket`/`memoryType`/`powerWatt`）都攤平進同一個 Item DTO | CPU 沒有 `memoryType`、GPU 沒有 `socket`，這些不相關欄位會顯示一堆 `null` | 在 DTO 類別加 `@JsonInclude(JsonInclude.Include.NON_NULL)`，值為 null 的欄位直接不出現在回應 JSON 裡 |
 
 ---
 
